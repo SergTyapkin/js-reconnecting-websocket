@@ -3,7 +3,6 @@
  * @description вебсокет-клиент с переподключением через заданное время,
  * удобным назначением коллбэков и event-data форматом сообщений
  */
-import {WebSocket} from "vite";
 
 // Make Vue plugin: vue.use(<imported WS>);
 export default {
