@@ -1,17 +1,35 @@
 {
   "name": "@sergtyapkin/reconnecting-websocket",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "private": false,
   "license": "MIT",
   "author": {
     "name": "Sergey Tyapkin",
     "email": "Sererga115@gmail.com"
   },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "keywords": [
+    "modal",
+    "popup",
+    "prompt",
+    "alert",
+    "confirm"
+  ],
   "homepage": "https://github.com/SergTyapkin/js-reconnecting-websocket",
-  "scripts": {
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/SergTyapkin/js-reconnecting-websocket.git"
   },
+  "bugs": {
+    "url": "https://github.com/SergTyapkin/js-reconnecting-websocket/issues"
+  },
+  "scripts": {},
   "dependencies": {
   },
   "devDependencies": {
+    "@types/node": "^22.7.3",
+    "@types/vue": "^2.0.0",
+    "typescript": "^5.6.2"
   }
 }

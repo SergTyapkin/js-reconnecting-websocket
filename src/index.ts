@@ -4,9 +4,26 @@
  * удобным назначением коллбэков и event-data форматом сообщений
  */
 
+import './additionToVueApp.d.ts';
+
+/**
+ * Хэндлер, который можно добавить на определенный тип входящего сообщения
+ * @callback CallbackWSHandler
+ * @param receivedData - данные из входящего сообщения, взятые из поля для данных
+ */
+type CallbackWSHandler = (receivedData: any, event: MessageEvent<any>) => void
+/**
+ * Объект с парами "имя_события": коллбэк.
+ * При получении сообщения коллбэк для его обработки ищется в этом объекте
+ */
+type CallbackWSHandlersObject = {
+    [index: string]: CallbackWSHandler
+}
+
+
 // Make Vue plugin: vue.use(<imported WS>);
 export default {
-    install: (app, url) => {
+    install: (app: any, url: string) => {
         app.config.globalProperties.$ws = new WS(url);
     }
 }
@@ -26,19 +43,19 @@ const DEFAULT_DATA_FIELD_NAME = 'data';
  * Время между неудачныыми попытками подключения по умолчанию
  * @type {number}
  */
-const CONNECT_TIMEOUT = 2000
+const CONNECT_TIMEOUT = 2000;
 
 /**
  * Время переподключения после разрыва соединения по умолчанию
  * @type {number}
  */
-const BASE_RECONNECT_TIMEOUT = 1000
+const BASE_RECONNECT_TIMEOUT = 1000;
 /**
  * После неудачных попыток соединения подряд, время переподключения увеличивается в 2 раза
  * Это максимальное время переподключения по умолчанию
  * @type {number}
  */
-const MAX_RECONNECT_TIMEOUT = 4 * 1000
+const MAX_RECONNECT_TIMEOUT = 4 * 1000;
 
 
 /**
@@ -48,78 +65,68 @@ const MAX_RECONNECT_TIMEOUT = 4 * 1000
 export class WS {
     /**
      * Объект браузерного вебсокет-соединения
-     * @type {WebSocket}
      */
-    ws = undefined;
+    ws?: WebSocket
     /**
      * URL, по которому открывается соединение
-     * @type {string}
      */
-    url = "";
+    url: string
     /**
      * Поддерживаемые протоколы соединения.
      * Если не указано, то используются стандартные для объекта WebSocket
-     * @type {string|undefined}
      */
-    protocols = undefined;
+    protocols?: string
     /**
      * Имя поля, отвечающего за название типа каждого сообщения
-     * @type {string}
      */
-    eventFieldName = '';
+    eventFieldName: string
     /**
      * Имя поля, отвечающего за данные, отправляемые с каждым сообщением
-     * @type {string}
      */
-    dataFieldName = '';
+    dataFieldName: string
+    /**
+     * Через сколько времени в миллисекундах будет произведена попытка переподключения после разрыва соединения
+     */
+    reconnectTimeout: number
 
     /**
      * Коллбэк, вызывающийся при успешном открытии соединения.
      * По умолчанию выводит сообщение об открытии
-     * @param e {Event}
      */
-    onopen = (e) => {console.log(`WS connection to ${this.url} opened`, e)};
+    onopen = (e: Event) => {console.log(`WS connection to ${this.url} opened`, e)};
     /**
      * Коллбэк, вызывающийся при закрытии соединения по любой причине.
      * По умолчанию выводит сообщение о закрытии
-     * @param e {Event}
      */
-    onclose = (e) => {console.log(`WS connection to ${this.url} closed`, e)};
+    onclose = (e: Event) => {console.log(`WS connection to ${this.url} closed`, e)};
     /**
      * Коллбэк, вызывающийся при ошибки во время соединения.
      * По умолчанию выводит сообщение об ошибке
-     * @param e {Event}
      */
-    onerror = (e) => {console.log(`WS error in ${this.url}`, e)};
-    /**
-     * Хэндлер, который можно добавить на определенный тип входящего сообщения
-     * @callback CallbackWSHandler
-     * @param {object} receivedData - данные из входящего сообщения, взятые из поля для данных
-     */
+    onerror = (e: Event) => {console.log(`WS error in ${this.url}`, e)};
+
     /**
      * Объект с парами "имя_события": коллбэк.
      * При получении сообщения коллбэк для его обработки ищется в этом объекте
-     * @type {Object.<CallbackWSHandler>}
      */
-    handlers = {
+    handlers: CallbackWSHandlersObject = {
         // some_event: (receivedData) => {...},
         // ...
         // more events that will come from server
     }
     /**
      * Закрыто ли соединение в данный момент
-     * @type {boolean}
      */
-    closed = true;
+    closed: boolean = true;
 
     /**
-     * @param url {string} - полный адрес, по которому открывается соединение
-     * @param [reconnectTimeout=BASE_RECONNECT_TIMEOUT] {number} - время переподключения после разрыва соединения в миллисекундах
-     * @param [eventFieldName=DEFAULT_EVENT_FIELD_NAME] {string} - имя поля в каждом сообщении, определяющее тип события
-     * @param [dataFieldName=DEFAULT_DATA_FIELD_NAME] {string} - имя поля в каждом сообщении, в котором передаются данные сообщения
-     * @param protocols {string?} - список доступных протоколов подключения. По умолчанию используется стандартный для браузерного WebSocket
+     * @param url - полный адрес, по которому открывается соединение
+     * @param reconnectTimeout - время переподключения после разрыва соединения в миллисекундах
+     * @param eventFieldName - имя поля в каждом сообщении, определяющее тип события
+     * @param dataFieldName - имя поля в каждом сообщении, в котором передаются данные сообщения
+     * @param protocols - список доступных протоколов подключения. По умолчанию используется стандартный для браузерного WebSocket
      */
-    constructor(url, reconnectTimeout = BASE_RECONNECT_TIMEOUT, eventFieldName = DEFAULT_EVENT_FIELD_NAME, dataFieldName = DEFAULT_DATA_FIELD_NAME, protocols = undefined) {
+    constructor(url: string, reconnectTimeout: number = BASE_RECONNECT_TIMEOUT, eventFieldName: string = DEFAULT_EVENT_FIELD_NAME, dataFieldName: string = DEFAULT_DATA_FIELD_NAME, protocols?: string) {
         this.url = url;
         this.protocols = protocols;
         this.eventFieldName = eventFieldName;
@@ -134,7 +141,10 @@ export class WS {
     open() {
         this.closed = false;
         this.ws = new WebSocket(this.url, this.protocols); // Открываем браузерное соединение
-        setTimeout(function() { // Через `CONNECT_TIMEOUT` проверяем, открылось ли соединение. Если нет - закрываем
+        setTimeout(function(this: WS) { // Через `CONNECT_TIMEOUT` проверяем, открылось ли соединение. Если нет - закрываем
+            if (!this.isCreated()) {
+                return;
+            }
             if (this.ws.readyState === WebSocket.CONNECTING) {
                 this.ws.close();
             }
@@ -150,15 +160,15 @@ export class WS {
         this.ws.onclose = (e) => {
             this.onclose(e);
 
-            setTimeout(function () { // через `this.reconnectTimeout` коннектимся заново
-                if ((this.ws.readyState === WebSocket.OPEN) || (this.closed)) { // Если уже открыто или вообще открывать не надо - выходим из функции
+            setTimeout(function (this: WS) { // через `this.reconnectTimeout` коннектимся заново
+                if (!this.isCreated() || (this.ws.readyState === WebSocket.OPEN) || (this.closed)) { // Если уже открыто или вообще открывать не надо - выходим из функции
                     return;
                 }
                 this.open();
                 if (this.reconnectTimeout < MAX_RECONNECT_TIMEOUT) { // Увеличиваем время реконнекта в 2 раза
                     this.reconnectTimeout *= 2;
                 } else {
-                    this.reconnectTimeout = MAX_RECONNECT_TIMEOUT; // Но вреям реконнекта не больше максимального времени
+                    this.reconnectTimeout = MAX_RECONNECT_TIMEOUT; // Но время реконнекта не больше максимального времени
                 }
             }.bind(this), this.reconnectTimeout);
         }
@@ -181,26 +191,30 @@ export class WS {
 
     /**
      * Отправить сообщение в открытие соединение
-     * @param event {string} - название события
-     * @param data {object|string} - данные сообщения
+     * @param event - название события
+     * @param data - данные сообщения
      */
-    send(event, data) {
+    send(event: string, data: object | string) {
+        if (!this.isCreated()) {
+            return;
+        }
         if (this.ws.readyState !== WebSocket.OPEN) {
             console.log(`WS WARNING: trying to send message but WS is not opened: event: ${event}, data: ${data}`);
             return;
         }
         console.log("WS SEND MESSAGE:", event, data);
-        const message = {};
-        message[this.eventFieldName] = event;
-        message[this.dataFieldName] = data;
+        const message = {
+            [this.eventFieldName]: event,
+            [this.dataFieldName]: data,
+        };
         this.ws.send(JSON.stringify(message));
     }
     /**
      * Закрыть соединение
-     * @param status {number?} - код закрытия соединения
-     * @param reason {string?} - строка-описание, почему закрыто соединение
+     * @param status - код закрытия соединения
+     * @param reason - строка-описание, почему закрыто соединение
      */
-    close(status, reason) {
+    close(status?: number, reason?: string) {
         this.ws?.close(status, reason);
         this.closed = true;
     }
@@ -210,5 +224,9 @@ export class WS {
      */
     clearHandlers() {
         this.handlers = {};
+    }
+
+    isCreated(): this is {ws: WebSocket} {
+        return this.ws !== undefined;
     }
 }

@@ -1,0 +1,7 @@
+test-report.html
+yarn.lock
+package-lock.json
+coverage
+dist
+node_modules
+.idea
