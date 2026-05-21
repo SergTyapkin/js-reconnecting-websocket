@@ -8,7 +8,8 @@
  * Обработчик для определенного типа входящего сообщения
  * @template T - тип данных, ожидаемых в сообщении
  */
-export type WSEventHandler<T = unknown> = (data: T, fullData: object, event: MessageEvent) => void;
+export type WSEventHandler<T = unknown, TF = object> = (data: T, fullData: TF, event: MessageEvent) => void;
+export type WSAllEventHandler<TF = object> = (fullData: TF, event: MessageEvent) => void;
 
 /**
  * Конфигурация WebSocket-клиента
@@ -70,6 +71,7 @@ export default class WS {
   private ws: WebSocket | null = null;
   private readonly config: Required<Omit<WSConfig, 'protocols' | 'onOpen' | 'onClose' | 'onError'>> & Pick<WSConfig, 'protocols' | 'onOpen' | 'onClose' | 'onError'>;
   private handlers: Map<string, WSEventHandler> = new Map();
+  private allMessagesHandlers: Set<WSAllEventHandler> = new Set();
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private connectTimer: ReturnType<typeof setTimeout> | null = null;
   private currentReconnectTimeout: number;
@@ -166,6 +168,25 @@ export default class WS {
   }
 
   /**
+   * Регистрирует обработчик для любого события
+   */
+  onAny<T = object>(handler: WSAllEventHandler<T>): () => void {
+    this.allMessagesHandlers.add(handler as WSAllEventHandler);
+    
+    // Возвращаем функцию для отписки
+    return () => {
+      this.offAny(handler);
+    };
+  }
+
+  /**
+   * Удаляет обработчик для любого события
+   */
+  offAny<T = object>(handler: WSAllEventHandler<T>) {
+    this.allMessagesHandlers.delete(handler as WSAllEventHandler);
+  }
+
+  /**
    * Удаляет обработчик для указанного события
    */
   off(event: string): void {
@@ -197,6 +218,7 @@ export default class WS {
    */
   clearHandlers(): void {
     this.handlers.clear();
+    this.allMessagesHandlers.clear();
   }
 
   /**
@@ -271,6 +293,12 @@ export default class WS {
 
     this.log('debug', 'Received message:', message);
 
+    // Вызываем обработчики для всех событий
+    this.allMessagesHandlers.forEach(handler => {
+      handler(message, event);
+    });
+
+    // Вызываем обработчики для событий
     const eventName = message[this.config.eventFieldName];
     
     if (eventName === undefined) {

@@ -301,6 +301,7 @@ const ws = new WS({ url: 'wss://example.com' });
 // Настраиваем обработчики до открытия
 ws.on('auth', handleAuth);
 ws.on('data', handleData);
+ws.onAny(handleAll);
 
 // open() возвращает Promise, который разрешится при успешном подключении
 try {
@@ -349,6 +350,11 @@ ws.send('plain text message');
 ws.on('eventName', (data, fullMessage, originalEvent) => {
   // data - распарсенные данные из поля dataFieldName
   // fullMessage - полное распарсенное JSON-сообщение
+  // originalEvent - оригинальный MessageEvent браузера
+  console.log('Все поля сообщения:', Object.keys(fullMessage));
+});
+
+ws.onAny(fullMessage, originalEvent) => {
   // originalEvent - оригинальный MessageEvent браузера
   console.log('Все поля сообщения:', Object.keys(fullMessage));
 });
@@ -443,6 +449,7 @@ const ws = new WS({ url: 'wss://test', autoOpen: true });
 | `send(data)` | `void` | Отправить произвольные данные (объект или строку) |
 | `sendEventData(event, data)` | `void` | Отправить форматированное сообщение с событием и данными |
 | `on<T>(event, handler)` | `() => void` | Зарегистрировать обработчик события. Возвращает функцию для удаления |
+| `onAny<T>(handler)` | `() => void` | Зарегистрировать обработчик на любое сообщение. Возвращает функцию для удаления |
 | `off(event)` | `void` | Удалить обработчик события |
 | `hasHandler(event)` | `boolean` | Проверить наличие обработчика для события |
 | `clearHandlers()` | `void` | Удалить все обработчики событий |
