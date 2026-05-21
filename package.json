@@ -1,6 +1,6 @@
 {
   "name": "@sergtyapkin/reconnecting-websocket",
-  "version": "1.0.5",
+  "version": "2.0.0",
   "private": false,
   "license": "MIT",
   "author": {
@@ -9,12 +9,28 @@
   },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.js"
+    },
+    "./vue": {
+      "types": "./dist/vue-shim.d.ts"
+    }
+  },
+  "typesVersions": {
+    "*": {
+      "vue": [
+        "./dist/vue-shim.d.ts"
+      ]
+    }
+  },
   "keywords": [
-    "modal",
-    "popup",
-    "prompt",
-    "alert",
-    "confirm"
+    "websocket",
+    "reconnecting",
+    "ws",
+    "socket"
   ],
   "homepage": "https://github.com/SergTyapkin/js-reconnecting-websocket",
   "repository": {
@@ -24,13 +40,14 @@
   "bugs": {
     "url": "https://github.com/SergTyapkin/js-reconnecting-websocket/issues"
   },
-  "scripts": {},
+  "scripts": {
+    "build": "tsc && node -e \"require('fs').cpSync('src/vue-shim.d.ts', 'dist/vue-shim.d.ts')\"",
+    "prepublishOnly": "npm run build"
+  },
   "dependencies": {
-    "vue": "^3"
   },
   "devDependencies": {
     "@types/node": "^22.7.3",
-    "@types/vue": "^2.0.0",
     "typescript": "^5.6.2"
   }
 }

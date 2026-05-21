@@ -1,232 +1,349 @@
 /**
  * @module
- * @description вебсокет-клиент с переподключением через заданное время,
- * удобным назначением коллбэков и event-data форматом сообщений
+ * @description WebSocket-клиент с автоматическим переподключением,
+ * типизированными обработчиками событий и event-data форматом сообщений
  */
 
-import './additionToVueApp.js';
+/**
+ * Обработчик для определенного типа входящего сообщения
+ * @template T - тип данных, ожидаемых в сообщении
+ */
+export type WSEventHandler<T = unknown> = (data: T, fullData: object, event: MessageEvent) => void;
 
 /**
- * Хэндлер, который можно добавить на определенный тип входящего сообщения
- * @callback CallbackWSHandler
- * @param receivedData - данные из входящего сообщения, взятые из поля для данных
+ * Конфигурация WebSocket-клиента
  */
-type CallbackWSHandler = (receivedData: any, event: MessageEvent<any>) => void
-/**
- * Объект с парами "имя_события": коллбэк.
- * При получении сообщения коллбэк для его обработки ищется в этом объекте
- */
-type CallbackWSHandlersObject = {
-    [index: string]: CallbackWSHandler
+export interface WSConfig {
+  /** URL для подключения */
+  url: string;
+  /** Поддерживаемые протоколы */
+  protocols?: string | string[];
+  /** Имя поля с типом события в сообщении */
+  eventFieldName?: string;
+  /** Имя поля с данными в сообщении */
+  dataFieldName?: string;
+  /** Базовая задержка перед переподключением (мс) */
+  reconnectTimeout?: number;
+  /** Таймаут на установку соединения (мс) */
+  connectTimeout?: number;
+  /** Максимальная задержка перед переподключением (мс) */
+  maxReconnectTimeout?: number;
+  /** Множитель увеличения задержки переподключения */
+  backoffMultiplier?: number;
+  /** Автоматически открывать соединение после создания */
+  autoOpen?: boolean;
+  /** Колбэк при открытии соединения */
+  onOpen?: (event: Event) => void;
+  /** Колбэк при закрытии соединения */
+  onClose?: (event: CloseEvent) => void;
+  /** Колбэк при ошибке */
+  onError?: (event: Event) => void;
+  /** Уровень логирования */
+  logLevel?: 'debug' | 'info' | 'warn' | 'error' | 'none';
 }
 
-
-// Make Vue plugin: vue.use(<imported WS>);
-export default {
-    install: (app: any, url: string) => {
-        app.config.globalProperties.$ws = new WS(url);
-    }
+/**
+ * Сообщение WebSocket
+ */
+interface WSMessage {
+  [field: string]: any;
 }
 
 /**
- * Имя по умолчанию для поля типа события в каждом сообщении
- * @type {string}
+ * Дефолтные значения конфигурации
  */
-const DEFAULT_EVENT_FIELD_NAME = 'event';
-/**
- * Имя по умолчанию для поля данных сообщения в каждом сообщении
- * @type {string}
- */
-const DEFAULT_DATA_FIELD_NAME = 'data';
-
-/**
- * Время между неудачныыми попытками подключения по умолчанию
- * @type {number}
- */
-const CONNECT_TIMEOUT = 2000;
+const DEFAULT_CONFIG: Required<Omit<WSConfig, 'url' | 'protocols' | 'onOpen' | 'onClose' | 'onError'>> = {
+  eventFieldName: 'type',
+  dataFieldName: 'data',
+  reconnectTimeout: 1000,
+  connectTimeout: 2000,
+  maxReconnectTimeout: 10000,
+  backoffMultiplier: 2,
+  autoOpen: false,
+  logLevel: 'info',
+};
 
 /**
- * Время переподключения после разрыва соединения по умолчанию
- * @type {number}
+ * Класс-менеджер WebSocket-соединения с автоматическим переподключением
  */
-const BASE_RECONNECT_TIMEOUT = 1000;
-/**
- * После неудачных попыток соединения подряд, время переподключения увеличивается в 2 раза
- * Это максимальное время переподключения по умолчанию
- * @type {number}
- */
-const MAX_RECONNECT_TIMEOUT = 4 * 1000;
+export default class WS {
+  private ws: WebSocket | null = null;
+  private readonly config: Required<Omit<WSConfig, 'protocols' | 'onOpen' | 'onClose' | 'onError'>> & Pick<WSConfig, 'protocols' | 'onOpen' | 'onClose' | 'onError'>;
+  private handlers: Map<string, WSEventHandler> = new Map();
+  private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  private connectTimer: ReturnType<typeof setTimeout> | null = null;
+  private currentReconnectTimeout: number;
+  private _closed = true;
+  private resolveConnectionPromise: (() => void) | null = null;
+  private rejectConnectionPromise: (() => void) | null = null;
 
+  constructor(config: WSConfig) {
+    this.config = { ...DEFAULT_CONFIG, ...config };
+    this.currentReconnectTimeout = this.config.reconnectTimeout;
 
-/**
- * @class
- * @description Класс-менеджер вебсокет-соединения
- */
-export class WS {
-    /**
-     * Объект браузерного вебсокет-соединения
-     */
-    ws?: WebSocket
-    /**
-     * URL, по которому открывается соединение
-     */
-    url: string
-    /**
-     * Поддерживаемые протоколы соединения.
-     * Если не указано, то используются стандартные для объекта WebSocket
-     */
-    protocols?: string
-    /**
-     * Имя поля, отвечающего за название типа каждого сообщения
-     */
-    eventFieldName: string
-    /**
-     * Имя поля, отвечающего за данные, отправляемые с каждым сообщением
-     */
-    dataFieldName: string
-    /**
-     * Через сколько времени в миллисекундах будет произведена попытка переподключения после разрыва соединения
-     */
-    reconnectTimeout: number
-
-    /**
-     * Коллбэк, вызывающийся при успешном открытии соединения.
-     * По умолчанию выводит сообщение об открытии
-     */
-    onopen = (e: Event) => {console.log(`WS connection to ${this.url} opened`, e)};
-    /**
-     * Коллбэк, вызывающийся при закрытии соединения по любой причине.
-     * По умолчанию выводит сообщение о закрытии
-     */
-    onclose = (e: Event) => {console.log(`WS connection to ${this.url} closed`, e)};
-    /**
-     * Коллбэк, вызывающийся при ошибки во время соединения.
-     * По умолчанию выводит сообщение об ошибке
-     */
-    onerror = (e: Event) => {console.log(`WS error in ${this.url}`, e)};
-
-    /**
-     * Объект с парами "имя_события": коллбэк.
-     * При получении сообщения коллбэк для его обработки ищется в этом объекте
-     */
-    handlers: CallbackWSHandlersObject = {
-        // some_event: (receivedData) => {...},
-        // ...
-        // more events that will come from server
+    if (this.config.autoOpen) {
+      this.open();
     }
-    /**
-     * Закрыто ли соединение в данный момент
-     */
-    closed: boolean = true;
+  }
 
-    /**
-     * @param url - полный адрес, по которому открывается соединение
-     * @param reconnectTimeout - время переподключения после разрыва соединения в миллисекундах
-     * @param eventFieldName - имя поля в каждом сообщении, определяющее тип события
-     * @param dataFieldName - имя поля в каждом сообщении, в котором передаются данные сообщения
-     * @param protocols - список доступных протоколов подключения. По умолчанию используется стандартный для браузерного WebSocket
-     */
-    constructor(url: string, reconnectTimeout: number = BASE_RECONNECT_TIMEOUT, eventFieldName: string = DEFAULT_EVENT_FIELD_NAME, dataFieldName: string = DEFAULT_DATA_FIELD_NAME, protocols?: string) {
-        this.url = url;
-        this.protocols = protocols;
-        this.eventFieldName = eventFieldName;
-        this.dataFieldName = dataFieldName;
+  /**
+   * Открывает WebSocket-соединение
+   */
+  open(): Promise<void> {
+    const connectionPromise = new Promise<void>((resolve, reject) => {
+        this.resolveConnectionPromise = resolve;
+        this.rejectConnectionPromise = reject;
+    });
 
-        this.reconnectTimeout = reconnectTimeout;
+    if (!this._closed) {
+      this.log('warn', 'Connection already open or opening');
+
+      this.rejectConnectionPromise!();
+      return connectionPromise;
     }
 
-    /**
-     * Открывает вебсокет-соединение с заданными в конструкторе параметрами
-     */
-    open() {
-        this.closed = false;
-        this.ws = new WebSocket(this.url, this.protocols); // Открываем браузерное соединение
-        setTimeout(function(this: WS) { // Через `CONNECT_TIMEOUT` проверяем, открылось ли соединение. Если нет - закрываем
-            if (!this.isCreated()) {
-                return;
-            }
-            if (this.ws.readyState === WebSocket.CONNECTING) {
-                this.ws.close();
-            }
-        }.bind(this), CONNECT_TIMEOUT);
+    this._closed = false;
+    this.cleanup();
 
-        this.ws.onopen = (e) => { // при успешном открытии возвращаем время реконнекта к изначальнмоу
-            this.reconnectTimeout = BASE_RECONNECT_TIMEOUT;
-            this.onopen(e);
-        }
-        this.ws.onerror = (e) => {
-            this.onerror(e);
-        }
-        this.ws.onclose = (e) => {
-            this.onclose(e);
-
-            setTimeout(function (this: WS) { // через `this.reconnectTimeout` коннектимся заново
-                if (!this.isCreated() || (this.ws.readyState === WebSocket.OPEN) || (this.closed)) { // Если уже открыто или вообще открывать не надо - выходим из функции
-                    return;
-                }
-                this.open();
-                if (this.reconnectTimeout < MAX_RECONNECT_TIMEOUT) { // Увеличиваем время реконнекта в 2 раза
-                    this.reconnectTimeout *= 2;
-                } else {
-                    this.reconnectTimeout = MAX_RECONNECT_TIMEOUT; // Но время реконнекта не больше максимального времени
-                }
-            }.bind(this), this.reconnectTimeout);
-        }
-        this.ws.onmessage = (event) => { // При получении сообщения
-            const message = JSON.parse(event.data); // Парсим через JSON всё из поля для данных
-            console.log("WS GOT MESSAGE:", message);
-
-            const eventName = message[this.eventFieldName]; // Берем название типа сообщения
-            if (eventName === undefined) {
-                return;
-            }
-            if (this.handlers[eventName] === undefined) { // Обработчика на такое событие нет
-                console.log(`WS WARNING: unknown event: ${eventName}`);
-                console.log("Active handlers:", this.handlers);
-                return;
-            }
-            this.handlers[eventName](message[this.dataFieldName], event); // Вызываем обработчик по этому событию, передавая ему данные
-        }
+    try {
+      this.ws = new WebSocket(this.config.url, this.config.protocols);
+    } catch (error) {
+      this.log('error', 'Failed to create WebSocket:', error);
     }
 
-    /**
-     * Отправить сообщение в открытие соединение
-     * @param event - название события
-     * @param data - данные сообщения
-     */
-    send(event: string, data: object | string) {
-        if (!this.isCreated()) {
-            return;
-        }
-        if (this.ws.readyState !== WebSocket.OPEN) {
-            console.log(`WS WARNING: trying to send message but WS is not opened: event: ${event}, data: ${data}`);
-            return;
-        }
-        console.log("WS SEND MESSAGE:", event, data);
-        const message = {
-            [this.eventFieldName]: event,
-            [this.dataFieldName]: data,
-        };
-        this.ws.send(JSON.stringify(message));
-    }
-    /**
-     * Закрыть соединение
-     * @param status - код закрытия соединения
-     * @param reason - строка-описание, почему закрыто соединение
-     */
-    close(status?: number, reason?: string) {
-        this.ws?.close(status, reason);
-        this.closed = true;
+    this.setupConnectTimeout();
+    this.setupEventHandlers();
+    return connectionPromise;
+  }
+
+  /**
+   * Отправляет сообщение в открытое соединение
+   */
+  sendEventData(event: string, data: unknown = {}): void {
+    if (!this.isConnected()) {
+      this.log('warn', `Cannot send message - socket not connected. Event: ${event}`);
+      return;
     }
 
-    /**
-     * Очистить все записанные хэндлеры
-     */
-    clearHandlers() {
-        this.handlers = {};
+    const message: WSMessage = {
+      [this.config.eventFieldName]: event,
+      [this.config.dataFieldName]: data,
+    };
+
+    this.log('debug', 'Sending message:', message);
+    this.ws!.send(JSON.stringify(message));
+  }
+
+  /**
+   * Отправляет сообщение в открытое соединение
+   */
+  send(data: object | string): void {
+    if (!this.isConnected()) {
+      this.log('warn', `Cannot send message - socket not connected. Data: ${data}`);
+      return;
+    }
+    this.log('debug', 'Sending message:', data);
+    
+    try {
+        const message = typeof data === 'object' ? JSON.stringify(data) : data;
+        
+        this.ws!.send(JSON.stringify(message));
+    } catch (e) {
+        this.log('error', 'Failed to send message:', e);
+    }
+  }
+
+  /**
+   * Регистрирует обработчик для указанного события
+   */
+  on<T = unknown>(event: string, handler: WSEventHandler<T>): () => void {
+    this.handlers.set(event, handler as WSEventHandler);
+    
+    // Возвращаем функцию для отписки
+    return () => {
+      this.off(event);
+    };
+  }
+
+  /**
+   * Удаляет обработчик для указанного события
+   */
+  off(event: string): void {
+    this.handlers.delete(event);
+  }
+
+  /**
+   * Проверяет, зарегистрирован ли обработчик для события
+   */
+  hasHandler(event: string): boolean {
+    return this.handlers.has(event);
+  }
+
+  /**
+   * Закрывает соединение
+   */
+  close(code?: number, reason?: string): void {
+    this._closed = true;
+    this.cleanup();
+
+    if (this.ws) {
+      this.ws.close(code, reason);
+      this.ws = null;
+    }
+  }
+
+  /**
+   * Удаляет все обработчики событий
+   */
+  clearHandlers(): void {
+    this.handlers.clear();
+  }
+
+  /**
+   * Проверяет, открыто ли соединение
+   */
+  isConnected(): boolean {
+    return this.ws?.readyState === WebSocket.OPEN;
+  }
+
+  /**
+   * Проверяет, создан ли экземпляр WebSocket
+   */
+  isCreated(): boolean {
+    return this.ws !== null;
+  }
+
+  /**
+   * Возвращает текущее состояние соединения
+   */
+  getReadyState(): number | null {
+    return this.ws?.readyState ?? null;
+  }
+
+  private setupConnectTimeout(): void {
+    this.connectTimer = setTimeout(() => {
+      if (this.ws?.readyState === WebSocket.CONNECTING) {
+        this.log('warn', 'Connection timeout, closing socket');
+        this.ws.close();
+      }
+    }, this.config.connectTimeout);
+  }
+
+  private setupEventHandlers(): void {
+    if (!this.ws) return;
+
+    this.ws.onopen = (event: Event) => {
+      this.resolveConnectionPromise!();
+      this.log('info', `Connected to ${this.config.url}`);
+      this.currentReconnectTimeout = this.config.reconnectTimeout;
+      this.clearTimer(this.connectTimer);
+      this.config.onOpen?.(event);
+    };
+
+    this.ws.onclose = (event: CloseEvent) => {
+      this.log('info', `Connection closed: ${event.code} ${event.reason}`);
+      this.config.onClose?.(event);
+      
+      if (!this._closed) {
+        this.scheduleReconnect();
+      }
+    };
+
+    this.ws.onerror = (event: Event) => {
+      this.log('error', 'WebSocket error occurred');
+      this.config.onError?.(event);
+    };
+
+    this.ws.onmessage = (event: MessageEvent) => {
+      this.handleMessage(event);
+    };
+  }
+
+  private handleMessage(event: MessageEvent): void {
+    let message: WSMessage;
+    
+    try {
+      message = JSON.parse(event.data);
+    } catch (error) {
+      this.log('error', 'Failed to parse message:', event.data);
+      return;
     }
 
-    isCreated(): this is {ws: WebSocket} {
-        return this.ws !== undefined;
+    this.log('debug', 'Received message:', message);
+
+    const eventName = message[this.config.eventFieldName];
+    
+    if (eventName === undefined) {
+      this.log('warn', `Message missing event field "${this.config.eventFieldName}"`);
+      return;
     }
+
+    const handler = this.handlers.get(eventName);
+    
+    if (!handler) {
+      this.log('warn', `No handler for event: ${eventName}`, 'Available handlers:', this.getHandlerNames());
+      return;
+    }
+
+    try {
+      handler(message[this.config.dataFieldName], message, event);
+    } catch (error) {
+      this.log('error', `Handler error for event "${eventName}":`, error);
+    }
+  }
+
+  private scheduleReconnect(): void {
+    this.clearTimer(this.reconnectTimer);
+    
+    this.reconnectTimer = setTimeout(() => {
+      if (this._closed || this.isConnected()) return;
+      
+      this.log('info', `Reconnecting (delay: ${this.currentReconnectTimeout}ms)...`);
+      this.open();
+      
+      this.currentReconnectTimeout = Math.min(
+        this.currentReconnectTimeout * this.config.backoffMultiplier,
+        this.config.maxReconnectTimeout
+      );
+    }, this.currentReconnectTimeout);
+  }
+
+  private cleanup(): void {
+    this.clearTimer(this.connectTimer);
+    this.clearTimer(this.reconnectTimer);
+  }
+
+  private clearTimer(timer: ReturnType<typeof setTimeout> | null): void {
+    if (timer) {
+      clearTimeout(timer);
+    }
+  }
+
+  private getHandlerNames(): string[] {
+    return Array.from(this.handlers.keys());
+  }
+
+  private log(level: 'debug' | 'info' | 'warn' | 'error', ...args: unknown[]): void {
+    const levels = { debug: 0, info: 1, warn: 2, error: 3, none: 4 };
+    const configLevel = this.config.logLevel;
+    
+    if (levels[level] >= levels[configLevel]) {
+      const prefix = `[WS ${level.toUpperCase()}]`;
+      
+      switch (level) {
+        case 'debug':
+          console.debug(prefix, ...args);
+          break;
+        case 'info':
+          console.info(prefix, ...args);
+          break;
+        case 'warn':
+          console.warn(prefix, ...args);
+          break;
+        case 'error':
+          console.error(prefix, ...args);
+          break;
+      }
+    }
+  }
 }
