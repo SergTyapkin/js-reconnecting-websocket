@@ -84,10 +84,10 @@ ws.sendEventData('chatMessage', { text: 'Привет!', from: 'Анна' });
 Приём (сервер должен отправлять JSON с полями event/data):
 ```json
 {
-  \"type\": \"chatMessage\",
-  \"data\": {
-    \"text\": \"Привет!\",
-    \"from\": \"Анна\"
+  "type": "chatMessage",
+  "data": {
+    "text": "Привет!",
+    "from": "Анна"
   }
 }
 ```
@@ -196,16 +196,16 @@ app.mount('#app');
 ```vue
 <template>
   <div>
-    <button @click=\"sendMessage\">Отправить сообщение</button>
-    <p v-if=\"connected\">🟢 Онлайн</p>
+    <button @click="sendMessage">Отправить сообщение</button>
+    <p v-if="connected">🟢 Онлайн</p>
     <p v-else>🔴 Офлайн</p>
     <ul>
-      <li v-for=\"msg in messages\" :key=\"msg.id\">{{ msg.text }}</li>
+      <li v-for="msg in messages" :key="msg.id">{{ msg.text }}</li>
     </ul>
   </div>
 </template>
 
-<script setup lang=\"ts\">
+<script setup lang="ts">
 import { ref, inject, onMounted, onUnmounted } from 'vue';
 import type WS from '@sergtyapkin/reconnecting-websocket';
 
@@ -248,7 +248,7 @@ function sendMessage() {
 ### Options API
 
 ```vue
-<script lang=\"ts\">
+<script lang="ts">
 import { defineComponent } from 'vue';
 
 export default defineComponent({
@@ -286,7 +286,7 @@ export default defineComponent({
 Создайте файл `env.d.ts` в корне Vue-проекта:
 
 ```typescript
-/// <reference types=\"@sergtyapkin/reconnecting-websocket/vue\" />
+/// <reference types="@sergtyapkin/reconnecting-websocket/vue" />
 ```
 
 Теперь `this.$ws` и `inject('ws')` полностью типизированы во всех компонентах.
@@ -421,7 +421,7 @@ const ws = new WS({ url: 'wss://test', autoOpen: true });
 | Параметр | Тип | Обязательный | Описание |
 |----------|-----|--------------|----------|
 | `url` | `string` | Да | URL для подключения |
-| `protocols` | `string \\| string[]` | Нет | Подпротоколы WebSocket |
+| `protocols` | `string | string[]` | Нет | Подпротоколы WebSocket |
 | `autoOpen` | `boolean` | Нет | Автоматически открывать соединение (по умолчанию `false`) |
 | `reconnectTimeout` | `number` | Нет | Базовая задержка переподключения в мс (по умолчанию `1000`) |
 | `maxReconnectTimeout` | `number` | Нет | Максимальная задержка переподключения в мс (по умолчанию `10000`) |
@@ -432,7 +432,7 @@ const ws = new WS({ url: 'wss://test', autoOpen: true });
 | `onOpen` | `(event: Event) => void` | Нет | Колбэк при открытии соединения |
 | `onClose` | `(event: CloseEvent) => void` | Нет | Колбэк при закрытии соединения |
 | `onError` | `(event: Event) => void` | Нет | Колбэк при ошибке |
-| `logLevel` | `'debug' \\| 'info' \\| 'warn' \\| 'error' \\| 'none'` | Нет | Уровень логирования (по умолчанию `'info'`) |
+| `logLevel` | `'debug' | 'info' | 'warn' | 'error' | 'none'` | Нет | Уровень логирования (по умолчанию `'info'`) |
 
 ### Методы
 
@@ -448,7 +448,7 @@ const ws = new WS({ url: 'wss://test', autoOpen: true });
 | `clearHandlers()` | `void` | Удалить все обработчики событий |
 | `isConnected()` | `boolean` | Проверяет, открыто ли соединение (readyState === OPEN) |
 | `isCreated()` | `boolean` | Проверяет, создан ли экземпляр WebSocket |
-| `getReadyState()` | `number \\| null` | Возвращает текущее состояние соединения |
+| `getReadyState()` | `number | null` | Возвращает текущее состояние соединения |
 
 ## 📄 Лицензия
 
