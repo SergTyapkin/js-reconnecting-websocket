@@ -149,7 +149,7 @@ export default class WS {
     try {
         const message = typeof data === 'object' ? JSON.stringify(data) : data;
         
-        this.ws!.send(JSON.stringify(message));
+        this.ws!.send(message);
     } catch (e) {
         this.log('error', 'Failed to send message:', e);
     }
